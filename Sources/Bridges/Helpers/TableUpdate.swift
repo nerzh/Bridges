@@ -502,25 +502,19 @@ extension Table {
     public func updateNonReturning<Column: ColumnRepresentable>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection,
-        preActions: @escaping () throws -> Void
-    ) async throws -> EventLoopFuture<Void> {
-        conn.eventLoop.future().flatMapThrowing {
-            try preActions()
-        }.flatMap {
-            self.updateNonReturning(on: keyColumn, on: conn)
-        }
+        preActions: @Sendable @escaping () async throws -> Void
+    ) async throws {
+        try await preActions()
+        try await updateNonReturning(on: keyColumn, on: conn)
     }
     
     public func update<Column: ColumnRepresentable>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection,
-        preActions: @escaping () throws -> Void
-    ) async throws -> EventLoopFuture<Self> {
-        conn.eventLoop.future().flatMapThrowing {
-            try preActions()
-        }.flatMap {
-            self.update(on: keyColumn, on: conn)
-        }
+        preActions: @Sendable @escaping () async throws -> Void
+    ) async throws -> Self {
+        try await preActions()
+        return try await update(on: keyColumn, on: conn)
     }
     
     ///
@@ -528,25 +522,19 @@ extension Table {
     public func updateNonReturning<Column: ColumnRepresentable>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection,
-        preActions: @escaping (Self) throws -> Void
-    ) async throws -> EventLoopFuture<Void> {
-        conn.eventLoop.future().flatMapThrowing {
-            try preActions(self)
-        }.flatMap {
-            self.updateNonReturning(on: keyColumn, on: conn)
-        }
+        preActions: @Sendable @escaping (Self) async throws -> Void
+    ) async throws {
+        try await preActions(self)
+        try await updateNonReturning(on: keyColumn, on: conn)
     }
     
     public func update<Column: ColumnRepresentable>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection,
-        preActions: @escaping (Self) throws -> Void
-    ) async throws -> EventLoopFuture<Self> {
-        conn.eventLoop.future().flatMapThrowing {
-            try preActions(self)
-        }.flatMap {
-            self.update(on: keyColumn, on: conn)
-        }
+        preActions: @Sendable @escaping (Self) async throws -> Void
+    ) async throws -> Self {
+        try await preActions(self)
+        return try await update(on: keyColumn, on: conn)
     }
     
     ///
@@ -554,21 +542,19 @@ extension Table {
     public func updateNonReturning<Column: ColumnRepresentable, T>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection,
-        preActions: () -> EventLoopFuture<T>
-    ) async throws -> EventLoopFuture<Void> {
-        preActions().flatMap { _ in
-            self.updateNonReturning(on: keyColumn, on: conn)
-        }
+        preActions: @Sendable () async throws -> T
+    ) async throws {
+        _ = try await preActions()
+        try await updateNonReturning(on: keyColumn, on: conn)
     }
     
     public func update<Column: ColumnRepresentable, T>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection,
-        preActions: () -> EventLoopFuture<T>
-    ) async throws -> EventLoopFuture<Self> {
-        preActions().flatMap { _ in
-            self.update(on: keyColumn, on: conn)
-        }
+        preActions: @Sendable () async throws -> T
+    ) async throws -> Self {
+        _ = try await preActions()
+        return try await update(on: keyColumn, on: conn)
     }
     
     ///
@@ -576,21 +562,19 @@ extension Table {
     public func updateNonReturning<Column: ColumnRepresentable, T>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection,
-        preActions: (Self) -> EventLoopFuture<T>
-    ) async throws -> EventLoopFuture<Void> {
-        preActions(self).flatMap { _ in
-            self.updateNonReturning(on: keyColumn, on: conn)
-        }
+        preActions: @Sendable (Self) async throws -> T
+    ) async throws {
+        try await preActions(self)
+        try await updateNonReturning(on: keyColumn, on: conn)
     }
     
     public func update<Column: ColumnRepresentable, T>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection,
-        preActions: (Self) -> EventLoopFuture<T>
-    ) async throws -> EventLoopFuture<Self> {
-        preActions(self).flatMap { _ in
-            self.update(on: keyColumn, on: conn)
-        }
+        preActions: @Sendable (Self) async throws -> T
+    ) async throws -> Self {
+        try await preActions(self)
+        return try await update(on: keyColumn, on: conn)
     }
     
     ///
@@ -598,34 +582,33 @@ extension Table {
     public func updateNonReturning<Column: ColumnRepresentable>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection
-    ) async throws -> EventLoopFuture<Void> {
+    ) async throws {
         guard let items = allColumns(excluding: keyColumn, logger: conn.logger) else {
-            return conn.eventLoop.makeFailedFuture(BridgesError.valueIsNilInKeyColumnUpdateIsImpossible)
+            throw BridgesError.valueIsNilInKeyColumnUpdateIsImpossible
         }
         guard items.0.count > 0 else {
             conn.logger.debug("\(Self.tableName) update has been skipped cause nothing to update")
-            return conn.eventLoop.makeSucceededVoidFuture()
+            return
         }
         let query = buildUpdateQuery(items: items.0, where: items.1 == items.2, returning: false)
-        return conn.query(sql: query)
+        try await conn.query(sql: query)
     }
     
     public func update<Column: ColumnRepresentable>(
         on keyColumn: KeyPath<Self, Column>,
         on conn: BridgeConnection
-    ) async throws -> EventLoopFuture<Self> {
+    ) async throws -> Self {
         guard let items = allColumns(excluding: keyColumn, logger: conn.logger) else {
-            return conn.eventLoop.makeFailedFuture(BridgesError.valueIsNilInKeyColumnUpdateIsImpossible)
+            throw BridgesError.valueIsNilInKeyColumnUpdateIsImpossible
         }
         guard items.0.count > 0 else {
             conn.logger.debug("\(Self.tableName) update has been skipped cause nothing to update")
-            return conn.eventLoop.makeSucceededFuture(self)
+            return self
         }
         let query = buildUpdateQuery(items: items.0, where: items.1 == items.2, returning: true)
-        return conn.query(sql: query, decoding: Self.self).flatMapThrowing { rows in
-            guard let row = rows.first else { throw BridgesError.failedToDecodeWithReturning }
-            return row
-        }
+        let rows = try await conn.query(sql: query, decoding: Self.self)
+        guard let row = rows.first else { throw BridgesError.failedToDecodeWithReturning }
+        return row
     }
     
     ///
